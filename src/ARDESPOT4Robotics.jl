@@ -21,6 +21,7 @@ export
     DESPOTRandomSource,
     MemorizingSource,
     MemorizingRNG,
+    HashedSource,
 
     ScenarioBelief,
     previous_obs,
@@ -41,6 +42,7 @@ export
 
 # include("random.jl")
 include("random_2.jl")
+include("hashed_source.jl")
 
 """
     DESPOTSolver(<keyword arguments>)
@@ -63,6 +65,9 @@ parameters match the definitions in the paper exactly.
 - `bounds`
 - `default_action`
 - `rng`
+- `parallel`
+- `parallel_min_scenarios`
+- `parallel_scenarios`
 - `random_source`
 - `bounds_warnings`
 - `tree_in_info`
@@ -104,8 +109,26 @@ Further information can be found in the field docstrings (e.g.
     "A random number generator for the internal sampling processes."
     rng::MersenneTwister                    = MersenneTwister(rand(UInt32))
 
+    """If true, the actions of a belief node are expanded on separate threads (start Julia with `-t N`).
+
+    The tree is the same one that `parallel=false` builds from the same random numbers. The POMDP, the bounds and any default policy are then called from several threads at once, so they must not share mutable state (an internal rng, a cache, ...). Requires a `random_source` that implements `ARDESPOT.worker_source`, i.e. a `HashedSource`.
+    """
+    parallel::Bool                          = false
+
+    """With `parallel=true`, belief nodes with fewer scenarios than this are still expanded serially.
+
+    Handing an action to another thread costs a few microseconds, which is more than expanding it takes when the node has few scenarios and the model and bounds are cheap. Lower this (down to 1) if a single generative model step or bound evaluation is expensive.
+    """
+    parallel_min_scenarios::Int             = 20
+
+    """If true, the work *inside* one action expansion is itself spread over threads: the scenario steps are chunked across tasks (chunks of at least `parallel_min_scenarios` scenarios), and the initial bounds of the new child nodes are computed in parallel (children chunked by scenario count).
+
+    Independent of `parallel`; they can be combined. The tree is still exactly the serial tree. The same thread-safety requirements as for `parallel` apply. Useful when the model or the bounds are expensive but there are fewer actions than threads.
+    """
+    parallel_scenarios::Bool                = false
+
     "A source for random numbers in scenario rollout"
-    random_source::DESPOTRandomSource       = MemorizingSource(K, D, rng)
+    random_source::DESPOTRandomSource       = (parallel || parallel_scenarios) ? HashedSource() : MemorizingSource(K, D, rng)
 
     "If true, sanity checks on the provided bounds are performed."
     bounds_warnings::Bool                   = true
@@ -131,10 +154,17 @@ function DESPOTPlanner(sol::DESPOTSolver, pomdp::POMDP)
     rng = deepcopy(sol.rng)
     rs = deepcopy(sol.random_source)
     Random.seed!(rs, rand(rng, UInt32))
+    if sol.parallel || sol.parallel_scenarios
+        worker_source(rs) # throws an informative error if rs cannot be shared between threads
+        if Threads.nthreads() == 1
+            @warn("DESPOTSolver(parallel=true) will not be faster because Julia is running with a single thread. Start Julia with e.g. `julia -t 4`.", maxlog=1)
+        end
+    end
     return DESPOTPlanner(deepcopy(sol), pomdp, bounds, rs, rng)
 end
 
 include("tree.jl")
+include("parallel.jl")
 include("planner.jl")
 include("pomdps_glue.jl")
 

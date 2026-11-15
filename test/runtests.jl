@@ -9,6 +9,7 @@ using ParticleFilters
 
 include("memorizing_rng.jl")
 include("independent_bounds.jl")
+include("parallel.jl")
 
 pomdp = BabyPOMDP()
 pomdp.discount = 1.0

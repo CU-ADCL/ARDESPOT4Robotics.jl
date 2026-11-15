@@ -53,6 +53,10 @@ function DESPOT(p::DESPOTPlanner, b_0)
 end
 
 function expand!(D::DESPOT, b::Int, p::DESPOTPlanner)
+    if (p.sol.parallel || p.sol.parallel_scenarios) && length(D.scenarios[b]) >= p.sol.parallel_min_scenarios
+        return expand_parallel!(D, b, p) # same result as the loop below; see parallel.jl
+    end
+
     S = statetype(p.pomdp)
     A = actiontype(p.pomdp)
     O = obstype(p.pomdp)

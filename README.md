@@ -88,6 +88,23 @@ solver = DESPOTSolver(bounds=IndependentBounds(lower, upper))
 
 Bounds need not be calculated independently; a single function that takes in the `POMDP` and `ScenarioBelief` and returns a tuple containing the lower and upper bounds can be passed to the `bounds` argument.
 
+### Multithreaded tree expansion (experimental)
+
+When a belief node is expanded, each action's work (stepping all scenarios and computing the initial bounds of the new child nodes) is independent of the other actions', so it can run on separate threads:
+
+```julia
+solver = DESPOTSolver(bounds=bounds, parallel=true) # and start Julia with `julia -t 4` or similar
+```
+
+The resulting tree is *exactly* the tree that `parallel=false` would build with the same random numbers (`random_source=HashedSource()`, the default when `parallel=true`, gives each scenario and depth a random stream that does not depend on the order in which the threads ask for it; the shared-memory `MemorizingSource` cannot be used with `parallel=true`).
+
+Requirements and caveats:
+
+- **The POMDP's generative model, the bounds, and any rollout policy inside the bounds are called from several threads at once, so they must be thread-safe**: they must not write to shared mutable state such as an internal `RNG` (use only the `rng` passed to `gen`/the `ScenarioBelief`'s random source), a preallocated scratch buffer, a memoization cache, or a lazily initialized field.
+- Handing an action to another thread costs a few microseconds, so it only pays off when expanding one action is more expensive than that (an expensive model/bounds, or many scenarios). Nodes with fewer scenarios than `parallel_min_scenarios` (default 20) are expanded serially; lower it towards 1 if a single model step or bound evaluation is expensive.
+- Only the node expansion is parallel; the rest of the search (selecting nodes, backing up bounds) stays serial, so the achievable speedup is capped by the fraction of time spent in expansion and by the number of actions.
+- `parallel_scenarios=true` additionally (or on its own) parallelizes the inside of one action's expansion — the scenario steps are chunked across tasks, and the initial bounds of the new child nodes are computed in parallel. The tree is still exactly the serial tree, and the same thread-safety requirements apply. It helps when the model or bounds are expensive and the number of actions is smaller than the number of threads.
+
 ## Visualization
 
 [D3Trees.jl](https://github.com/sisl/D3Trees.jl) can be used to visualize the search tree, for example
