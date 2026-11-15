@@ -342,3 +342,99 @@ function expand_action_parscen(p::DESPOTPlanner, rs::DESPOTRandomSource,
 
     return ActionExpansion{S,A,O}(a, rsum, obs, child_scenarios, L_0s, U_0s)
 end
+
+# ---------------------------------------------------------------------------------------
+# Parallel default-policy simulation (DefaultPolicyLB(policy, parallel=true)).
+#
+# branching_sim steps the whole scenario group once, splits it by observation, and recurses
+# into each branch. The branches are independent: a branch's rollout actions depend only on
+# its own belief, and every random stream is a pure function of (seed, scenario, depth), so
+# the sub-simulations may run on separate tasks. The returned value is exactly the serial
+# one: r_sum is accumulated in scenario order on the calling task, every branch value is the
+# same number the serial recursion computes (branches below the threshold literally run the
+# serial code), and the branch values are summed in observation first-appearance order, just
+# like the serial loop. The one thing that must stay serial is the pre-split simulation of a
+# group: the policy acts on the whole group belief, so splitting it would change the actions.
+
+sim_branch_parallel(pomdp::POMDP, policy::Policy, bp::ScenarioBelief, steps::Integer, fval, min_scenarios::Int) =
+    length(bp.scenarios) == 1 ? rollout(pomdp, policy, bp, steps, fval) :
+                                branching_sim_parallel(pomdp, policy, bp, steps, fval, min_scenarios)
+
+function branching_sim_parallel(pomdp::POMDP, policy::Policy, b::ScenarioBelief, steps::Integer, fval, min_scenarios::Int)
+    S = statetype(pomdp)
+    O = obstype(pomdp)
+    odict = Dict{O, Vector{Pair{Int, S}}}()
+    olist = O[]
+
+    if steps <= 0
+        return length(b.scenarios)*fval(pomdp, b)
+    end
+
+    a = action(policy, b)
+
+    r_sum = 0.0
+    for (k, s) in b.scenarios
+        if !isterminal(pomdp, s)
+            rng = get_rng(b.random_source, k, b.depth)
+            sp, o, r = @gen(:sp, :o, :r)(pomdp, s, a, rng)
+
+            if haskey(odict, o)
+                push!(odict[o], k=>sp)
+            else
+                odict[o] = [k=>sp]
+                push!(olist, o)
+            end
+
+            r_sum += r
+        end
+    end
+
+    # Branches with at least min_scenarios scenarios get their own task (and a private copy
+    # of the random source); the rest are simulated inline with the serial code while the
+    # tasks run. Values are gathered and summed in olist order, like the serial loop.
+    n = length(olist)
+    results = Vector{Float64}(undef, n)
+    tasks = Task[]
+    task_idx = Int[]
+    try
+        for i in 1:n
+            scenarios = odict[olist[i]]
+            if length(scenarios) >= min_scenarios
+                ws = worker_source(b.random_source)
+                bp = ScenarioBelief(scenarios, ws, b.depth+1, olist[i])
+                push!(tasks, Threads.@spawn sim_branch_parallel(pomdp, policy, bp, steps-1, fval, min_scenarios))
+                push!(task_idx, i)
+            end
+        end
+        for i in 1:n
+            scenarios = odict[olist[i]]
+            if length(scenarios) < min_scenarios
+                bp = ScenarioBelief(scenarios, b.random_source, b.depth+1, olist[i])
+                if length(scenarios) == 1
+                    results[i] = rollout(pomdp, policy, bp, steps-1, fval)
+                else
+                    results[i] = branching_sim(pomdp, policy, bp, steps-1, fval)
+                end
+            end
+        end
+    finally
+        # never return while a task is still running, even if the inline work failed
+        for t in tasks
+            try
+                wait(t)
+            catch ex
+                ex isa TaskFailedException || rethrow()
+            end
+        end
+    end
+    for (t, i) in zip(tasks, task_idx)
+        results[i] = fetch_result(t)::Float64
+    end
+
+    next_r = 0.0
+    for i in 1:n
+        next_r += results[i]
+    end
+
+    return r_sum + discount(pomdp)*next_r
+end

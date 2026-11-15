@@ -104,6 +104,7 @@ Requirements and caveats:
 - Handing an action to another thread costs a few microseconds, so it only pays off when expanding one action is more expensive than that (an expensive model/bounds, or many scenarios). Nodes with fewer scenarios than `parallel_min_scenarios` (default 20) are expanded serially; lower it towards 1 if a single model step or bound evaluation is expensive.
 - Only the node expansion is parallel; the rest of the search (selecting nodes, backing up bounds) stays serial, so the achievable speedup is capped by the fraction of time spent in expansion and by the number of actions.
 - `parallel_scenarios=true` additionally (or on its own) parallelizes the inside of one action's expansion — the scenario steps are chunked across tasks, and the initial bounds of the new child nodes are computed in parallel. The tree is still exactly the serial tree, and the same thread-safety requirements apply. It helps when the model or bounds are expensive and the number of actions is smaller than the number of threads.
+- `DefaultPolicyLB(policy, parallel=true, parallel_min_scenarios=n)` parallelizes the inside of a single default-policy bound evaluation: once the simulated scenarios split up over different observations, the branches run on separate threads. The bound value is exactly the serial one. This is the only way to speed up the bound of the *root* belief, which runs before the search loop and can dominate on expensive models.
 
 ## Visualization
 

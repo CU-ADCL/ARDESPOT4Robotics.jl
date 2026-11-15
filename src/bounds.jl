@@ -90,38 +90,52 @@ end
 # Default Policy Lower Bound
 
 """
-    DefaultPolicyLB(policy; max_depth=nothing, final_value=(m,x)->0.0)
-    DefaultPolicyLB(solver; max_depth=nothing, final_value=(m,x)->0.0)
+    DefaultPolicyLB(policy; max_depth=nothing, final_value=(m,x)->0.0, parallel=false, parallel_min_scenarios=20)
+    DefaultPolicyLB(solver; max_depth=nothing, final_value=(m,x)->0.0, parallel=false, parallel_min_scenarios=20)
 
 A lower bound calculated by running a default policy on the scenarios in a belief.
 
 # Keyword Arguments
 - `max_depth::Union{Nothing,Int}=nothing`: max depth to run the simulation. The depth of the belief will be automatically subtracted so simulations for the bound will be run for `max_depth-b.depth` steps. If `nothing`, the solver's max depth will be used.
 - `final_value=(m,x)->0.0`: a function (or callable object) that specifies an additional value to be added at the end of the simulation when `max_depth` is reached. This function will be called with two arguments, a `POMDP`, and a `ScenarioBelief`. It will not be called when the states in the belief are terminal.
+- `parallel::Bool=false`: if true, once the simulated scenarios split up over different observations, the sub-simulations of the observation branches run on separate threads (recursively). The bound value is exactly the serial one, including the floating-point summation order. The policy, the model and `final_value` are then called from several threads at once, so they must be thread-safe, and the belief's random source must support `ARDESPOT4Robotics.worker_source` (i.e. be a `HashedSource`). This parallelizes the bound of the root belief, which `DESPOTSolver(parallel=true)` alone cannot touch.
+- `parallel_min_scenarios::Int=20`: with `parallel=true`, an observation branch is only handed to another task if it carries at least this many scenarios; smaller branches are simulated inline. Lower it (down to 1, where even single-scenario rollouts get their own task) if a model step is expensive.
 """
 struct DefaultPolicyLB{P<:Union{Solver, Policy}, D<:Union{Nothing,Int}, T}
     policy::P
     max_depth::D
     final_value::T
+    parallel::Bool
+    parallel_min_scenarios::Int
 end
+
+# compatibility with the old three-field constructor
+DefaultPolicyLB(policy_or_solver, max_depth, final_value) =
+    DefaultPolicyLB(policy_or_solver, max_depth, final_value, false, 20)
 
 function DefaultPolicyLB(policy_or_solver::T;
                          max_depth=nothing,
-                         final_value=(m,x)->0.0) where T <: Union{Solver, Policy}
-    return DefaultPolicyLB(policy_or_solver, max_depth, final_value)
+                         final_value=(m,x)->0.0,
+                         parallel=false,
+                         parallel_min_scenarios=20) where T <: Union{Solver, Policy}
+    return DefaultPolicyLB(policy_or_solver, max_depth, final_value, parallel, parallel_min_scenarios)
 end
 
 function lbound(lb::DefaultPolicyLB, pomdp::POMDP, b::ScenarioBelief)
-    rsum = branching_sim(pomdp, lb.policy, b, lb.max_depth-b.depth, lb.final_value)
+    if lb.parallel
+        rsum = branching_sim_parallel(pomdp, lb.policy, b, lb.max_depth-b.depth, lb.final_value, lb.parallel_min_scenarios)
+    else
+        rsum = branching_sim(pomdp, lb.policy, b, lb.max_depth-b.depth, lb.final_value)
+    end
     return rsum/length(b.scenarios)
 end
 
 function init_bound(lb::DefaultPolicyLB{S}, pomdp::POMDP, sol::DESPOTSolver) where S <: Solver
     policy = solve(lb.policy, pomdp)
-    return init_bound(DefaultPolicyLB(policy, lb.max_depth, lb.final_value), pomdp, sol)
+    return init_bound(DefaultPolicyLB(policy, lb.max_depth, lb.final_value, lb.parallel, lb.parallel_min_scenarios), pomdp, sol)
 end
 
 function init_bound(lb::DefaultPolicyLB{P}, pomdp::POMDP, sol::DESPOTSolver) where P <: Policy
     max_depth = something(lb.max_depth, sol.D)
-    return DefaultPolicyLB(lb.policy, max_depth, lb.final_value)
+    return DefaultPolicyLB(lb.policy, max_depth, lb.final_value, lb.parallel, lb.parallel_min_scenarios)
 end

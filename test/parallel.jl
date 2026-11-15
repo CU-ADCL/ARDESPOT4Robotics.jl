@@ -91,6 +91,39 @@ end
         pl = solve(sol, m)
         @test_throws ParTestError build_despot(pl, initialstate(m))
     end
+
+    @testset "parallel DefaultPolicyLB" begin
+        m = BabyPOMDP()
+        pol = FeedWhenCrying()
+        rng = MersenneTwister(3)
+        scenarios = [i => rand(rng, initialstate(m)) for i in 1:40]
+        for depth in (0, 5), seed in (3, 11)
+            b = ScenarioBelief(scenarios, Random.seed!(HashedSource(), seed), depth, missing)
+            ref = ARDESPOT4Robotics.lbound(DefaultPolicyLB(pol, 50, (m,x)->0.0), m, b)
+            for ms in (1, 3, 20)
+                bp = ScenarioBelief(scenarios, Random.seed!(HashedSource(), seed), depth, missing)
+                @test ARDESPOT4Robotics.lbound(DefaultPolicyLB(pol, 50, (m,x)->0.0, true, ms), m, bp) == ref
+            end
+        end
+
+        # whole tree with a parallel lower bound == fully serial tree
+        trees = map((false, true)) do par
+            lb = DefaultPolicyLB(pol; parallel=par, parallel_min_scenarios=1)
+            sol = DESPOTSolver(bounds=IndependentBounds(lb, 0.0), T_max=Inf, max_trials=100,
+                               rng=MersenneTwister(7), random_source=HashedSource(),
+                               parallel=par, parallel_scenarios=par, parallel_min_scenarios=1)
+            pl = solve(sol, m)
+            Random.seed!(pl.rs, 99)
+            build_despot(pl, initialstate(m))
+        end
+        @test partest_same_tree(trees...) === nothing
+
+        # a MemorizingSource is rejected as soon as a branch would be handed to a task
+        ms_src = Random.seed!(MemorizingSource(40, 50, MersenneTwister(1)), 3)
+        bm = ScenarioBelief(scenarios, ms_src, 0, missing)
+        @test_throws ArgumentError ARDESPOT4Robotics.lbound(DefaultPolicyLB(pol, 50, (m,x)->0.0, true, 1), m, bm)
+    end
+
     @testset "expand_action is inferrable" begin
         m = BabyPOMDP()
         sol = DESPOTSolver(bounds=IndependentBounds(DefaultPolicyLB(FeedWhenCrying()), 0.0),

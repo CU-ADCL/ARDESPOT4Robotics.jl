@@ -111,7 +111,7 @@ Further information can be found in the field docstrings (e.g.
 
     """If true, the actions of a belief node are expanded on separate threads (start Julia with `-t N`).
 
-    The tree is the same one that `parallel=false` builds from the same random numbers. The POMDP, the bounds and any default policy are then called from several threads at once, so they must not share mutable state (an internal rng, a cache, ...). Requires a `random_source` that implements `ARDESPOT.worker_source`, i.e. a `HashedSource`.
+    The tree is the same one that `parallel=false` builds from the same random numbers. The POMDP, the bounds and any default policy are then called from several threads at once, so they must not share mutable state (an internal rng, a cache, ...). Requires a `random_source` that implements `ARDESPOT4Robotics.worker_source`, i.e. a `HashedSource`.
     """
     parallel::Bool                          = false
 
