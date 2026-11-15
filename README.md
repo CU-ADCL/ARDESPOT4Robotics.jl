@@ -106,6 +106,52 @@ Requirements and caveats:
 - `parallel_scenarios=true` additionally (or on its own) parallelizes the inside of one action's expansion — the scenario steps are chunked across tasks, and the initial bounds of the new child nodes are computed in parallel. The tree is still exactly the serial tree, and the same thread-safety requirements apply. It helps when the model or bounds are expensive and the number of actions is smaller than the number of threads.
 - `DefaultPolicyLB(policy, parallel=true, parallel_min_scenarios=n)` parallelizes the inside of a single default-policy bound evaluation: once the simulated scenarios split up over different observations, the branches run on separate threads. The bound value is exactly the serial one. This is the only way to speed up the bound of the *root* belief, which runs before the search loop and can dominate on expensive models.
 
+### Making your POMDP thread-safe
+
+With any of the parallel options on, your `gen`, your bounds and your rollout policy are called from several threads at the same time. Anything they write to that is shared between those calls is a data race: the search then silently computes wrong values, usually in a small fraction of calls, and the tree stops matching the serial one. The three problems below are the ones that actually show up in robotics models.
+
+**1. A scratch buffer stored in the POMDP struct.** A common optimization is to preallocate a working array once and reuse it on every `gen` call:
+
+```julia
+struct MyPOMDP <: POMDP{S,A,O}
+    path_cache::MVector{6,Tuple{Float64,Float64,Float64}}  # written by every gen call
+end
+```
+
+Two threads then write to the same array at the same time. Allocate it inside the function instead and return it, or give each task its own copy (see 3).
+
+**2. A rollout policy that remembers something between steps.** A guide that keeps a workspace, a cache, or a memory of what it did at the previous depth has exactly the same problem, one level deeper: the simulations of two different belief nodes overwrite each other's memory. If the state is genuinely per-rollout, give every task its own:
+
+```julia
+function policy_state(guide)
+    get!(task_local_storage(), (:my_rollout_state, objectid(guide))) do
+        MyWorkspace(guide)        # built once per task, on first use
+    end::MyWorkspace
+end
+```
+
+This reproduces the serial behaviour exactly, because each task runs one simulation path at a time, just as the serial code does.
+
+**3. An RNG inside the model.** Use only the `rng` that is passed to `gen` (or the belief's random source). A `MersenneTwister` stored in the POMDP struct is shared mutable state like any other, and it also breaks reproducibility.
+
+Also watch out for memoization caches and fields that are initialized lazily on first use — both are writes to shared state.
+
+**How to check.** Build the tree twice with the same seed, once serial and once parallel, and compare the two `DESPOT` objects field by field. If anything in your model is not thread-safe, the trees differ:
+
+```julia
+function tree(parallel)
+    sol = DESPOTSolver(bounds=bounds, K=K, random_source=HashedSource(),
+                       parallel=parallel, parallel_scenarios=parallel, parallel_min_scenarios=1)
+    planner = solve(sol, pomdp)
+    Random.seed!(planner.rs, 42)       # same scenarios either way
+    return ARDESPOT4Robotics.build_despot(planner, b0)
+end
+serial, par = tree(false), tree(true)
+all(isequal(getfield(serial, f), getfield(par, f)) for f in fieldnames(typeof(serial)))
+```
+
+Run it a few times: races do not fail every time. Note that `isequal` compares `Vector` fields of your state type by identity, not element by element, so if your states hold arrays you need a comparison that looks inside them.
+
 ## Visualization
 
 [D3Trees.jl](https://github.com/sisl/D3Trees.jl) can be used to visualize the search tree, for example
