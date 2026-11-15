@@ -164,6 +164,7 @@ function DESPOTPlanner(sol::DESPOTSolver, pomdp::POMDP)
 end
 
 include("tree.jl")
+include("tree_compare.jl")
 include("parallel.jl")
 include("planner.jl")
 include("pomdps_glue.jl")

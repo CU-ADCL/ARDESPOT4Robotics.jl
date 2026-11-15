@@ -17,18 +17,14 @@ function POMDPs.gen(::ParTestThrowingPOMDP, s::Bool, a::Int, rng)
     return (sp=s, o=true, r=1.0)
 end
 
-# Field-by-field tree comparison; D.obs[1] (the root) is never assigned.
-function partest_same_tree(D1, D2)
-    for f in fieldnames(typeof(D1))
-        x, y = getfield(D1, f), getfield(D2, f)
-        if f == :obs
-            (length(x) == length(y) && all(isequal(x[i], y[i]) for i in 2:length(x))) || return f
-        else
-            isequal(x, y) || return f
-        end
-    end
-    return nothing
+# A state type that holds an array, like the robotics models this package is meant for:
+# `isequal` compares the array field by identity, `deep_isequal` by value.
+struct ParTestBoxedState
+    v::Vector{Float64}
+    n::Int
 end
+
+partest_same_tree(D1, D2) = ARDESPOT4Robotics.tree_mismatch(D1, D2)
 
 @testset "parallel" begin
     @testset "HashedSource determinism" begin
@@ -122,6 +118,46 @@ end
         ms_src = Random.seed!(MemorizingSource(40, 50, MersenneTwister(1)), 3)
         bm = ScenarioBelief(scenarios, ms_src, 0, missing)
         @test_throws ArgumentError ARDESPOT4Robotics.lbound(DefaultPolicyLB(pol, 50, (m,x)->0.0, true, 1), m, bm)
+    end
+
+    @testset "deep_isequal and tree comparison" begin
+        deep_isequal = ARDESPOT4Robotics.deep_isequal
+        # the case plain isequal gets wrong: equal contents, different arrays
+        a, b = ParTestBoxedState([1.0, 2.0], 3), ParTestBoxedState([1.0, 2.0], 3)
+        @test !isequal(a, b)          # compares the vector field by identity
+        @test deep_isequal(a, b)      # compares it by value
+        @test deep_isequal([a, a], [b, b])
+        @test !deep_isequal(a, ParTestBoxedState([1.0, 2.5], 3))
+        @test !deep_isequal(a, ParTestBoxedState([1.0, 2.0], 4))
+        @test !deep_isequal(a, ParTestBoxedState([1.0], 3))
+        # scalars keep isequal's semantics, which is what bitwise comparison needs
+        @test deep_isequal(NaN, NaN)
+        @test !deep_isequal(0.0, -0.0)
+        @test !deep_isequal(1, 1.0)   # different types
+        @test deep_isequal((1, [2.0]), (1, [2.0]))
+        @test deep_isequal(Dict(:a => [1.0]), Dict(:a => [1.0]))
+        # unassigned slots, as in a tree's root observation
+        u, w = Vector{Vector{Float64}}(undef, 2), Vector{Vector{Float64}}(undef, 2)
+        u[2] = [1.0]; w[2] = [1.0]
+        @test deep_isequal(u, w)
+        w[1] = [0.0]
+        @test !deep_isequal(u, w)
+
+        m = BabyPOMDP()
+        mktree(par) = begin
+            sol = DESPOTSolver(bounds=IndependentBounds(DefaultPolicyLB(FeedWhenCrying()), 0.0),
+                               K=30, T_max=Inf, max_trials=30, random_source=HashedSource(),
+                               parallel=par, parallel_scenarios=par, parallel_min_scenarios=1)
+            pl = solve(sol, m)
+            Random.seed!(pl.rs, 5)
+            build_despot(pl, initialstate(m))
+        end
+        D1, D2 = mktree(false), mktree(true)
+        @test ARDESPOT4Robotics.tree_mismatch(D1, D2) === nothing
+        @test ARDESPOT4Robotics.trees_equal(D1, D2)
+        D2.l[2] += 1.0 # a tree that really does differ is reported, with the field
+        @test ARDESPOT4Robotics.tree_mismatch(D1, D2) === :l
+        @test !ARDESPOT4Robotics.trees_equal(D1, D2)
     end
 
     @testset "expand_action is inferrable" begin

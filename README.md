@@ -136,7 +136,7 @@ This reproduces the serial behaviour exactly, because each task runs one simulat
 
 Also watch out for memoization caches and fields that are initialized lazily on first use — both are writes to shared state.
 
-**How to check.** Build the tree twice with the same seed, once serial and once parallel, and compare the two `DESPOT` objects field by field. If anything in your model is not thread-safe, the trees differ:
+**How to check.** Build the tree twice with the same seed, once serial and once parallel, and compare. If anything in your model is not thread-safe, the trees differ:
 
 ```julia
 function tree(parallel)
@@ -146,11 +146,12 @@ function tree(parallel)
     Random.seed!(planner.rs, 42)       # same scenarios either way
     return ARDESPOT4Robotics.build_despot(planner, b0)
 end
-serial, par = tree(false), tree(true)
-all(isequal(getfield(serial, f), getfield(par, f)) for f in fieldnames(typeof(serial)))
+ARDESPOT4Robotics.trees_equal(tree(false), tree(true))
 ```
 
-Run it a few times: races do not fail every time. Note that `isequal` compares `Vector` fields of your state type by identity, not element by element, so if your states hold arrays you need a comparison that looks inside them.
+`ARDESPOT4Robotics.tree_mismatch` returns the name of the first field that differs instead of a `Bool`, which tells you where to look: `:scenarios` points at the generative model, `:l` or `:mu` at the bounds or the rollout policy. Both compare by value all the way down (`deep_isequal`), because plain `isequal` compares a `Vector` field of your state type by identity and would report a difference between any two separately built trees.
+
+Run the check a few times and with several seeds: a race does not show up on every run.
 
 ## Visualization
 
