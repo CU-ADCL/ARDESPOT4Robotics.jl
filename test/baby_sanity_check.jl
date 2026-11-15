@@ -1,5 +1,5 @@
 using POMDPs
-using ARDESPOT
+using ARDESPOT4Robotics
 using POMDPTools
 using POMDPModels
 using ProgressMeter

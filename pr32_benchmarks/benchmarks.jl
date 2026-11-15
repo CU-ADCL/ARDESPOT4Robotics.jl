@@ -1,10 +1,10 @@
-#Benchmarks for ARDESPOT.jl PR No. 32 (Use OrderedDict)
+#Benchmarks for ARDESPOT4Robotics.jl PR No. 32 (Use OrderedDict)
 
 #Note: Uses HistoryRecorder instead of calls to action directly. This may add additional noise.
 
 using Pkg
 Pkg.activate(".")
-using ARDESPOT
+using ARDESPOT4Robotics
 
 Pkg.activate("pr32_benchmarks")
 using BenchmarkTools

@@ -1,4 +1,4 @@
-module ARDESPOT
+module ARDESPOT4Robotics
 
 using POMDPs
 using Parameters

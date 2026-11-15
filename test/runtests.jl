@@ -1,4 +1,4 @@
-using ARDESPOT
+using ARDESPOT4Robotics
 using Test
 
 using POMDPs
@@ -22,21 +22,21 @@ scenarios = [i=>rand(rng, b_0) for i in 1:K]
 o = false
 b = ScenarioBelief(scenarios, rs, 0, o)
 pol = FeedWhenCrying()
-r1 = ARDESPOT.branching_sim(pomdp, pol, b, 10, (m,x)->0.0)
-r2 = ARDESPOT.branching_sim(pomdp, pol, b, 10, (m,x)->0.0)
+r1 = ARDESPOT4Robotics.branching_sim(pomdp, pol, b, 10, (m,x)->0.0)
+r2 = ARDESPOT4Robotics.branching_sim(pomdp, pol, b, 10, (m,x)->0.0)
 @test r1 == r2
 tval = 7.0
-r3 = ARDESPOT.branching_sim(pomdp, pol, b, 10, (m,x)->tval)
+r3 = ARDESPOT4Robotics.branching_sim(pomdp, pol, b, 10, (m,x)->tval)
 @test r3 == r2 + tval*length(b.scenarios)
 
 scenarios = [1=>rand(rng, b_0)]
 b = ScenarioBelief(scenarios, rs, 0, false)
 pol = FeedWhenCrying()
-r1 = ARDESPOT.rollout(pomdp, pol, b, 10, (m,x)->0.0)
-r2 = ARDESPOT.rollout(pomdp, pol, b, 10, (m,x)->0.0)
+r1 = ARDESPOT4Robotics.rollout(pomdp, pol, b, 10, (m,x)->0.0)
+r2 = ARDESPOT4Robotics.rollout(pomdp, pol, b, 10, (m,x)->0.0)
 @test r1 == r2
 tval = 7.0
-r3 = ARDESPOT.rollout(pomdp, pol, b, 10, (m,x)->tval)
+r3 = ARDESPOT4Robotics.rollout(pomdp, pol, b, 10, (m,x)->tval)
 @test r3 == r2 + tval
 
 # AbstractParticleBelief interface
@@ -92,15 +92,15 @@ solver = DESPOTSolver(epsilon_0=0.1,
 p = solve(solver, pomdp)
 
 b0 = initialstate(pomdp)
-D = @inferred ARDESPOT.build_despot(p, b0)
-@inferred ARDESPOT.explore!(D, 1, p)
-@inferred ARDESPOT.expand!(D, length(D.children), p)
-@inferred ARDESPOT.prune!(D, 1, p)
-@inferred ARDESPOT.find_blocker(D, length(D.children), p)
-@inferred ARDESPOT.make_default!(D, length(D.children))
-@inferred ARDESPOT.backup!(D, 1, p)
-@inferred ARDESPOT.next_best(D, 1, p)
-@inferred ARDESPOT.excess_uncertainty(D, 1, p)
+D = @inferred ARDESPOT4Robotics.build_despot(p, b0)
+@inferred ARDESPOT4Robotics.explore!(D, 1, p)
+@inferred ARDESPOT4Robotics.expand!(D, length(D.children), p)
+@inferred ARDESPOT4Robotics.prune!(D, 1, p)
+@inferred ARDESPOT4Robotics.find_blocker(D, length(D.children), p)
+@inferred ARDESPOT4Robotics.make_default!(D, length(D.children))
+@inferred ARDESPOT4Robotics.backup!(D, 1, p)
+@inferred ARDESPOT4Robotics.next_best(D, 1, p)
+@inferred ARDESPOT4Robotics.excess_uncertainty(D, 1, p)
 @inferred action(p, b0)
 
 
@@ -123,7 +123,7 @@ a, info = action_info(p, initialstate(pomdp))
 show(stdout, MIME("text/plain"), info[:tree])
 
 # from README:
-using POMDPs, POMDPModels, ARDESPOT
+using POMDPs, POMDPModels, ARDESPOT4Robotics
 using POMDPTools
 
 pomdp = TigerPOMDP()

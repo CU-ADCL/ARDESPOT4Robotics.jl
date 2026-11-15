@@ -1,7 +1,7 @@
 using Gallium
 
 using POMDPs
-using ARDESPOT
+using ARDESPOT4Robotics
 using ProfileView
 using POMDPModels
 
@@ -14,4 +14,4 @@ solver = DESPOTSolver(epsilon_0=0.0,
                      )
 p = solve(solver, pomdp)
 b0 = initial_state_distribution(pomdp)
-@enter ARDESPOT.build_despot(p, b0)
+@enter ARDESPOT4Robotics.build_despot(p, b0)

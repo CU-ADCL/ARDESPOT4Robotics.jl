@@ -1,9 +1,10 @@
-# ARDESPOT
+# ARDESPOT4Robotics
 
-[![CI](https://github.com/JuliaPOMDP/ARDESPOT.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaPOMDP/ARDESPOT.jl/actions/workflows/CI.yml)
-[![codecov.io](http://codecov.io/github/JuliaPOMDP/ARDESPOT.jl/coverage.svg?branch=master)](http://codecov.io/github/JuliaPOMDP/ARDESPOT.jl?branch=master)
+[![CI](https://github.com/CU-ADCL/ARDESPOT4Robotics.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/CU-ADCL/ARDESPOT4Robotics.jl/actions/workflows/CI.yml)
 
-An implementation of the AR-DESPOT (Anytime Regularized DEterminized Sparse Partially Observable Tree) online POMDP Solver.
+An implementation of the AR-DESPOT (Anytime Regularized DEterminized Sparse Partially Observable Tree) online POMDP Solver, **with multithreaded tree search for expensive robotics models**.
+
+This package is a derivative of [JuliaPOMDP/ARDESPOT.jl](https://github.com/JuliaPOMDP/ARDESPOT.jl) by Zachary Sunberg and contributors (MIT licensed). It adds opt-in parallelism at three levels of the search — see [Multithreaded tree expansion](#multithreaded-tree-expansion-experimental). **With the same random numbers, the parallel search builds exactly the same tree as the serial search**, node for node and bit for bit, so enabling threads changes how long planning takes and nothing else. With the parallel options off (the default), the solver behaves exactly like upstream ARDESPOT.jl.
 
 Tried to match the pseudocode from this paper: http://bigbird.comp.nus.edu.sg/m2ap/wordpress/wp-content/uploads/2017/08/jair14.pdf as closely as possible. Look there for definitions of all symbols.
 
@@ -13,17 +14,20 @@ If you are trying to use this package and require more documentation, please fil
 
 ## Installation
 
-On Julia v1.0 or later, ARDESPOT is in the Julia General registry
+This package is not in the Julia General registry; install it from GitHub:
 
 ```julia
+using Pkg
 Pkg.add("POMDPs")
-Pkg.add("ARDESPOT")
+Pkg.add(url="https://github.com/CU-ADCL/ARDESPOT4Robotics.jl")
 ```
+
+It can be installed alongside upstream `ARDESPOT` — they are separate packages with separate UUIDs.
 
 ## Usage
 
 ```julia
-using POMDPs, POMDPModels, ARDESPOT
+using POMDPs, POMDPModels, ARDESPOT4Robotics
 using POMDPTools
 
 pomdp = TigerPOMDP()
@@ -42,7 +46,7 @@ For minimal examples of problem implementations, see [this notebook](https://git
 
 ## Solver Options
 
-Solver options can be found in the `DESPOTSolver` docstring and accessed using [Julia's built in documentation system](https://docs.julialang.org/en/v1/manual/documentation/#Accessing-Documentation-1) (or directly in the [Solver source code](/src/ARDESPOT.jl)). Each option has its own docstring and can be set with a keyword argument in the `DESPOTSolver` constructor. The definitions of the parameters match as closely as possible to the corresponding definition in the pseudocode of [this paper](http://bigbird.comp.nus.edu.sg/m2ap/wordpress/wp-content/uploads/2017/08/jair14.pdf).
+Solver options can be found in the `DESPOTSolver` docstring and accessed using [Julia's built in documentation system](https://docs.julialang.org/en/v1/manual/documentation/#Accessing-Documentation-1) (or directly in the [Solver source code](/src/ARDESPOT4Robotics.jl)). Each option has its own docstring and can be set with a keyword argument in the `DESPOTSolver` constructor. The definitions of the parameters match as closely as possible to the corresponding definition in the pseudocode of [this paper](http://bigbird.comp.nus.edu.sg/m2ap/wordpress/wp-content/uploads/2017/08/jair14.pdf).
 
 ### Bounds
 
@@ -89,7 +93,7 @@ Bounds need not be calculated independently; a single function that takes in the
 [D3Trees.jl](https://github.com/sisl/D3Trees.jl) can be used to visualize the search tree, for example
 
 ```julia
-using POMDPs, POMDPModels, D3Trees, ARDESPOT
+using POMDPs, POMDPModels, D3Trees, ARDESPOT4Robotics
 using POMDPTools
 
 pomdp = TigerPOMDP()
@@ -107,4 +111,4 @@ will create an interactive tree that looks like this:
 
 ## Relationship to DESPOT.jl
 
-[DESPOT.jl](https://github.com/JuliaPOMDP/DESPOT.jl) was designed to exactly emulate the [C++ code](https://github.com/AdaCompNUS/despot) released by the original DESPOT developers. This implementation was designed to be as close to the pseudocode from the journal paper as possible for the sake of readability. ARDESPOT has a few more features (for example DESPOT.jl does not implement regularization and pruning), and has more compatibility with a wider range of POMDPs.jl problems because it does not emulate the C++ code.
+[DESPOT.jl](https://github.com/JuliaPOMDP/DESPOT.jl) was designed to exactly emulate the [C++ code](https://github.com/AdaCompNUS/despot) released by the original DESPOT developers. This implementation was designed to be as close to the pseudocode from the journal paper as possible for the sake of readability. ARDESPOT4Robotics has a few more features (for example DESPOT.jl does not implement regularization and pruning), and has more compatibility with a wider range of POMDPs.jl problems because it does not emulate the C++ code.
